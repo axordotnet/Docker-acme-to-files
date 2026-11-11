@@ -1,6 +1,6 @@
 [project]
 name = "acme-to-files"
-version = "0.1.0"
+version = "0.2.0"
 description = "Safely export Traefik ACME certificates for other applications"
 requires-python = ">=3.13"
 license = "MIT"

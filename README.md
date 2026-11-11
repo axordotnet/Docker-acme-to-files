@@ -96,16 +96,46 @@ are not validated. Atomic visibility is not a guarantee against power-loss durab
 | --- | --- | --- |
 | `--source` | `ACME_SOURCE` | `/input/acme.json` |
 | `--output` | `OUTPUT_DIR` | `/output` |
-| `--password-file` | `PFX_PASSWORD_FILE` | Required for PFX |
+| `--password-file` | `PFX_PASSWORD_FILE` | Required when PFX_PASSWORD is absent |
+| — | `PFX_PASSWORD` | Optional; takes priority over the password file |
 | `--interval` | `POLL_INTERVAL` | `30` seconds; range 1–86400 |
 | `--once` | — | Export once; exit 0 on success, 1 on export error |
 | `--no-pfx` | — | Omit PFX; password file not required |
 | `--combined-pem` | — | Include key + chain in one PEM |
 | `--healthcheck` | — | Exit 0 if last validation succeeded and is recent |
 
-Password: 12–4096 bytes, no NUL; trailing CR/LF is removed to support secret files.
-Use a randomly generated password. Password changes are detected at the next poll.
-No plaintext password argument or password environment variable is accepted.
+Password: 12–4096 bytes, no NUL. File passwords have trailing CR/LF removed.
+Environment passwords are encoded as UTF-8 and preserved exactly (including spaces/newlines).
+Use a randomly generated password. File password changes are detected at the next poll.
+No plaintext password CLI argument is accepted.
+
+### Vault / environment injection
+
+Inject `PFX_PASSWORD` into the deployment environment through your Vault, then use the
+standalone alternative (no secret file needed):
+
+```sh
+docker compose -f compose.vault.yaml up -d
+```
+
+The example passes `${PFX_PASSWORD}` to the container and fails if it is unset or empty.
+Do not combine it with the default Compose file; use `-f compose.vault.yaml` by itself.
+For a custom stack, add `PFX_PASSWORD: "${PFX_PASSWORD:?Inject PFX_PASSWORD from your Vault}"`
+under the service's `environment` and remove the unused file-secret definitions.
+
+Priority: `--no-pfx` disables PFX entirely; otherwise an explicitly present `PFX_PASSWORD`
+wins over `--password-file` / `PFX_PASSWORD_FILE`. Empty, short, oversized or invalid values
+are rejected without falling back to the file. When the variable is absent, file behavior is unchanged.
+The variable is never printed by the application. It remains visible to operators with access
+to Docker inspection; avoid dumping rendered Compose configuration or environment variables into logs.
+
+A running process cannot receive a new environment from Vault. After rotating an injected
+value, refresh it in the deployment environment and recreate the container:
+
+```sh
+docker compose -f compose.vault.yaml up -d --force-recreate
+```
+
 For PEM-only Compose usage, set `command: ["--no-pfx"]` and remove the secret mapping,
 `PFX_PASSWORD_FILE`, and top-level `secrets` section.
 
@@ -127,8 +157,11 @@ docker pull ghcr.io/axordotnet/docker-acme-to-files:latest
 docker build --pull -t acme-to-files:local .
 ```
 
-`latest` follows tested `main`; `sha-<full-commit-sha>` identifies a build; a pushed `vX.Y.Z`
-tag publishes `X.Y.Z` and `X.Y`. For production, pin the **image digest** rather than `latest`.
+`latest` follows tested `main`; `sha-<full-commit-sha>` identifies a build. A release commit
+named `release: vX.Y.Z` on `main` publishes `X.Y.Z`, then creates the Git tag and GitHub release
+after anonymous pull verification. A manually pushed `vX.Y.Z` tag also publishes `X.Y.Z` and `X.Y`.
+Existing release tags are checked before publishing a new release commit to prevent overwrites.
+For production, pin the **image digest** rather than `latest`.
 The build uses pinned Python requirements and SHA-pinned Actions; the Python base image
 tracks upstream patch updates. Builds are therefore not bit-for-bit reproducible.
 Weekly CI rechecks tests/dependencies but does not automatically republish the image.

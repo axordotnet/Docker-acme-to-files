@@ -20,7 +20,10 @@ PFX files, passwords or certificate account records. Use generated test certific
 - The source is read only; ACME account private keys are never intentionally exported.
 - Generated filenames are validated, normalized and checked for collisions.
 - Files use 0600, generated directories 0700, and the default container UID is non-root.
-- PFX secrets are read from files and never logged; exported PEM private keys are unencrypted.
+- PFX secrets are read from files or `PFX_PASSWORD` and never logged; exported PEM private keys
+  are unencrypted. An explicitly present environment variable overrides the file, including
+  invalid/empty values (which fail validation without fallback). Docker operators may inspect
+  container environment variables; Vault environment rotations require container recreation.
 - Cryptographic parsing uses PyCA cryptography. Supplied chain signatures and validity periods
   are checked, but no trust-store, revocation or network-based validation is performed.
 - Invalid snapshots preserve previous data; previous data can expire and must be monitored.

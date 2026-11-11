@@ -185,13 +185,27 @@ def publish(output, files):
         shutil.rmtree(stale)
 
 
+def validate_password(password):
+    if not 12 <= len(password) <= 4096 or b"\x00" in password:
+        raise ExportError("PFX password must contain 12-4096 bytes and no NUL")
+    return password
+
+
 def password_from_file(path):
     if not path:
-        raise ExportError("PFX_PASSWORD_FILE is required unless --no-pfx is selected")
-    password = read_limited(path, 4096).rstrip(b"\r\n")
-    if len(password) < 12 or b"\x00" in password:
-        raise ExportError("PFX password must contain at least 12 bytes and no NUL")
-    return password
+        raise ExportError("Set PFX_PASSWORD or PFX_PASSWORD_FILE, or select --no-pfx")
+    return validate_password(read_limited(path, 4096).rstrip(b"\r\n"))
+
+
+def resolve_password(path):
+    """An explicitly present environment value takes priority, including empty values."""
+    if "PFX_PASSWORD" in os.environ:
+        try:
+            password = os.environ["PFX_PASSWORD"].encode("utf-8")
+        except UnicodeError as exc:
+            raise ExportError("PFX_PASSWORD must contain valid UTF-8 text") from exc
+        return validate_password(password)
+    return password_from_file(path)
 
 
 def update_health(path, ok, interval):
@@ -234,7 +248,8 @@ def main(argv=None):
     source = Path(args.source)
     if source.resolve().is_relative_to(output.resolve()):
         parser.error("Source must be outside the output directory")
-    if args.password_file and Path(args.password_file).resolve().is_relative_to(output.resolve()):
+    if (not args.no_pfx and "PFX_PASSWORD" not in os.environ and args.password_file
+            and Path(args.password_file).resolve().is_relative_to(output.resolve())):
         parser.error("Password file must be outside the output directory")
     os.umask(0o077)
     import fcntl
@@ -257,7 +272,7 @@ def main(argv=None):
             success = False
             try:
                 raw = read_limited(source, MAX_INPUT)
-                password = None if args.no_pfx else password_from_file(args.password_file)
+                password = None if args.no_pfx else resolve_password(args.password_file)
                 # Revalidate even unchanged data so expiry is reflected in health.
                 files, count = parse_snapshot(raw, password, args.combined_pem)
                 digest = hashlib.sha256(raw + b"\x00" + (password or b"")).digest()

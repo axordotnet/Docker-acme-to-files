@@ -22,7 +22,9 @@ from acme_to_files.app import (
     password_from_file,
     publish,
     read_limited,
+    resolve_password,
     update_health,
+    validate_password,
 )
 
 PASSWORD = b"test-only-long-password"
@@ -166,6 +168,56 @@ def test_health(tmp_path):
     assert healthcheck(path) == 1
     path.write_text('{"ok": true, "time": 1, "interval": 1}')
     assert healthcheck(path) == 1
+
+
+def test_environment_password_precedes_file(tmp_path, monkeypatch):
+    monkeypatch.setenv("PFX_PASSWORD", PASSWORD.decode())
+    assert resolve_password(tmp_path / "missing-file") == PASSWORD
+    assert resolve_password(None) == PASSWORD
+
+
+def test_environment_password_preserves_exact_utf8(monkeypatch):
+    value = "  mot-de-passe-é-🔐-$${vault}\r\n"
+    monkeypatch.setenv("PFX_PASSWORD", value)
+    password = resolve_password(None)
+    assert password == value.encode("utf-8")
+    files, _ = parse_snapshot(snapshot(make_entry()), password)
+    _, cert, _ = pkcs12.load_key_and_certificates(
+        files["letsencrypt/example.test/bundle.pfx"], password
+    )
+    assert cert is not None
+
+
+@pytest.mark.parametrize("value", ["", "short", "x" * 4097])
+def test_invalid_environment_password_does_not_fall_back(tmp_path, monkeypatch, value):
+    path = tmp_path / "secret"
+    path.write_bytes(PASSWORD)
+    monkeypatch.setenv("PFX_PASSWORD", value)
+    with pytest.raises(ExportError) as error:
+        resolve_password(path)
+    assert PASSWORD.decode() not in str(error.value)
+    if value:
+        assert value not in str(error.value)
+
+
+def test_absent_environment_uses_file(tmp_path, monkeypatch):
+    monkeypatch.delenv("PFX_PASSWORD", raising=False)
+    path = tmp_path / "secret"
+    path.write_bytes(PASSWORD + b"\n")
+    assert resolve_password(path) == PASSWORD
+    with pytest.raises(ExportError, match="Set PFX_PASSWORD"):
+        resolve_password(None)
+
+
+@pytest.mark.parametrize("value", [b"x" * 11, b"x" * 4097, b"x" * 12 + b"\x00"])
+def test_password_validation(value):
+    with pytest.raises(ExportError):
+        validate_password(value)
+
+
+@pytest.mark.parametrize("length", [12, 4096])
+def test_password_length_boundaries(length):
+    assert validate_password(b"x" * length) == b"x" * length
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Linux publication semantics")

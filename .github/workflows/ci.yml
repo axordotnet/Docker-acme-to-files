@@ -19,18 +19,22 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      matrix:
+        python: ['3.13', '3.15']
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: '3.13'
+          python-version: ${{ matrix.python }}
       - run: python -m pip install -r requirements-dev.txt
       - run: ruff check .
       - run: pytest -v
       - run: pip-audit -r requirements.txt
       - name: Build and exercise the hardened container
+        if: matrix.python == '3.15'
         run: |
           docker build --pull -t acme-to-files:test .
           PYTHONPATH=src:tests python tests/container_smoke.py
@@ -43,18 +47,47 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      release_enabled: ${{ steps.release.outputs.enabled }}
+      digest: ${{ steps.build.outputs.digest }}
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+      - name: Determine release version
+        id: release
+        env:
+          HEAD_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, re, tomllib
+          version = tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version']
+          if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', version):
+              raise SystemExit('Expected a stable semantic version')
+          title = os.environ.get('HEAD_MESSAGE', '').split('\n', 1)[0]
+          enabled = os.environ['GITHUB_REF'] == 'refs/heads/main' and title == f'release: v{version}'
+          if enabled and not pathlib.Path(f'docs/releases/v{version}.md').is_file():
+              raise SystemExit('Missing versioned release notes')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'version={version}\nenabled={str(enabled).lower()}\n')
+          PY
+      - name: Refuse to overwrite an existing release tag
+        if: steps.release.outputs.enabled == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          count=$(gh api "repos/${GITHUB_REPOSITORY}/git/matching-refs/tags/v${VERSION}" --jq 'length')
+          test "$count" = 0 || { echo 'Release tag already exists; choose a new version.'; exit 1; }
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
-      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
+      - uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         id: meta
         with:
           images: ghcr.io/axordotnet/docker-acme-to-files
@@ -63,7 +96,9 @@ jobs:
             type=sha,prefix=sha-,format=long
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+            type=raw,value=${{ steps.release.outputs.version }},enable=${{ steps.release.outputs.enabled }}
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        id: build
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -87,3 +122,33 @@ jobs:
           export DOCKER_CONFIG="$(mktemp -d)"
           docker pull "ghcr.io/axordotnet/docker-acme-to-files:sha-${COMMIT}"
           docker run --rm --network none "ghcr.io/axordotnet/docker-acme-to-files:sha-${COMMIT}" --help
+      - name: Verify versioned image
+        if: needs.publish.outputs.release_enabled == 'true'
+        env:
+          VERSION: ${{ needs.publish.outputs.version }}
+        run: |
+          export DOCKER_CONFIG="$(mktemp -d)"
+          docker pull "ghcr.io/axordotnet/docker-acme-to-files:${VERSION}"
+          docker run --rm --network none "ghcr.io/axordotnet/docker-acme-to-files:${VERSION}" --help
+
+  release:
+    needs: [publish, verify-public-image]
+    if: needs.publish.outputs.release_enabled == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Create Git tag and GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.publish.outputs.version }}
+          DIGEST: ${{ needs.publish.outputs.digest }}
+        run: |
+          notes="${RUNNER_TEMP}/release-notes.md"
+          cat "docs/releases/v${VERSION}.md" > "$notes"
+          printf '\nImage: `ghcr.io/axordotnet/docker-acme-to-files:%s`\n\nDigest: `%s`\n' "$VERSION" "$DIGEST" >> "$notes"
+          gh release create "v${VERSION}" --target "$GITHUB_SHA" --title "v${VERSION}" --notes-file "$notes"
