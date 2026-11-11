@@ -154,18 +154,47 @@ restart a container solely because it is unhealthy. Monitor health and certifica
 
 ```sh
 docker pull ghcr.io/axordotnet/docker-acme-to-files:latest
-docker build --pull -t acme-to-files:local .
+docker build --pull --no-cache -t acme-to-files:local .
 ```
 
-`latest` follows tested `main`; `sha-<full-commit-sha>` identifies a build. A release commit
+`latest` follows tested/scanned `main`; `sha-<full-commit-sha>` tracks its most recent build.
+`build-<run-id>-<attempt>` is a candidate tag and is not a deployment channel. A release commit
 named `release: vX.Y.Z` on `main` publishes `X.Y.Z`, then creates the Git tag and GitHub release
 after anonymous pull verification. A manually pushed `vX.Y.Z` tag also publishes `X.Y.Z` and `X.Y`.
 Existing release tags are checked before publishing a new release commit to prevent overwrites.
-For production, pin the **image digest** rather than `latest`.
-The build uses pinned Python requirements and SHA-pinned Actions; the Python base image
-tracks upstream patch updates. Builds are therefore not bit-for-bit reproducible.
-Weekly CI rechecks tests/dependencies but does not automatically republish the image.
-Rebuild/release after base-image security updates. Dependabot proposes dependency updates.
+Pin a deployment **image digest** for controlled rollouts, or use `latest` to receive new
+builds when pulling/recreating your container. Versioned releases are not overwritten by
+scheduled rebuilds: deployments pinned to `0.2.0` or another version do not follow `latest`.
+
+The Python base is pinned by multi-platform digest. Dependabot checks Docker tags/digests,
+Python dependencies and Actions every day (including weekends) at 04:00 Europe/Paris and
+opens PRs; these still require a successful CI and merge. Digest pinning does not prevent
+updates, but an unmerged digest PR means the old Python interpreter remains in use.
+
+Daily CI at 05:17 UTC (06:17 Paris in winter, 07:17 in summer) rebuilds without cache,
+installs available Debian package updates, reruns tests and audits, and republishes `latest`
+and the commit tag only on success. A manual run on `main` does the same. Schedules can be
+delayed by GitHub; inactive public repositories may have scheduled workflows disabled.
+Debian upgrades do not update the Python interpreter installed by the official image: that
+still needs a base digest PR. Builds are intentionally not bit-for-bit reproducible.
+
+Trivy reports image vulnerabilities and blocks fixable HIGH/CRITICAL OS/library findings.
+Unfixed findings remain in the full report for review; a green pipeline is not a claim that
+the image contains no CVEs. Both AMD64 and ARM64 candidate manifests are scanned by exact
+digest before promotion to release/latest tags. Scanner failures also block promotion.
+The Trivy action is tracked by Dependabot; its explicit CLI version must also be maintained.
+The final image excludes pip/ensurepip and their bundled dependencies; installation tools
+remain confined to the build stage.
+
+Updating GHCR does not update running containers. Pull and recreate your service when ready:
+
+```sh
+docker compose -f compose.vault.yaml pull
+docker compose -f compose.vault.yaml up -d
+```
+
+See [repository security settings](docs/repository-settings.md) for tag protection and GitHub
+security features that require owner access. Committing their configuration does not activate them.
 
 GHCR packages may initially be private even for a public repository. The final CI job tests
 an anonymous pull. If it fails with access denied, the owner must set the package visibility

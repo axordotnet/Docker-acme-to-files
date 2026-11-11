@@ -29,8 +29,15 @@ PFX files, passwords or certificate account records. Use generated test certific
 - Invalid snapshots preserve previous data; previous data can expire and must be monitored.
 - Publication uses atomic rename of a symlink on a local Linux filesystem. Consumers must
   resolve the generation once when opening related files to avoid a renewal-time read race.
-- Python dependencies are audited in CI. SBOM/provenance are build metadata, not a security
-  certification. Base-image vulnerabilities require monitoring and timely image rebuilds.
+- Python dependencies are audited in CI. Trivy reports image CVEs and blocks fixable HIGH/CRITICAL
+  OS/library findings; unfixed findings remain visible in the full report for review. Both
+  published architectures are scanned by exact candidate digest before tag promotion.
+- Daily uncached builds install Debian package updates and republish rolling tags only after
+  validation. Dependabot proposes daily base-digest and dependency updates, requiring merge.
+  The pinned Python interpreter does not change until a base update is merged. Existing hosts
+  must pull/recreate containers to deploy updates. Versioned releases are not rebuilt daily.
+- SBOM/provenance and passing scans are not a security certification. Monitor failed CI,
+  unpatched vulnerabilities, unmerged dependency PRs and upstream interpreter fixes.
 - This tool has no network listener, telemetry, hooks, shell evaluation or Docker API access.
 
 Use the provided Compose hardening. Limit source exposure, encrypt backups, pin deployment

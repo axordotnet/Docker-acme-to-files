@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.1 — 2026-11-12
+
+- Pin the Python multi-platform base digest and check dependency updates daily, including weekends.
+- Rebuild rolling images daily without cache, applying available Debian package fixes.
+- Scan images with Trivy; reject fixable HIGH/CRITICAL findings before promoting AMD64/ARM64 tags.
+- Preserve full vulnerability reports for review and verify anonymous pulls by exact digest.
+- Add an importable release-tag ruleset, owner settings guide and feature request template.
+- Use the rolling image channel in the Vault Compose example to facilitate security updates.
+
 ## 0.2.0 — 2026-11-11
 
 - Support Vault-injected `PFX_PASSWORD`, with explicit precedence over file secrets.

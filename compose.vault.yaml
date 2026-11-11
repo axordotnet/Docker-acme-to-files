@@ -1,7 +1,8 @@
 # Standalone alternative: docker compose -f compose.vault.yaml up -d
 services:
   acme-to-files:
-    image: ghcr.io/axordotnet/docker-acme-to-files:0.2.0
+    # Rolling, tested image with daily security rebuilds. Pin a version/digest if preferred.
+    image: ghcr.io/axordotnet/docker-acme-to-files:latest
     restart: unless-stopped
     user: "${EXPORT_UID:-10001}:${EXPORT_GID:-10001}"
     read_only: true

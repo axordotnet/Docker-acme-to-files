@@ -74,6 +74,12 @@ def main():
         finally:
             docker("rm", "--force", container, check=False)
     print("Container export, renewal, recovery, password rotation and SIGTERM passed")
+    docker(
+        "run", "--rm", "--network", "none", "--entrypoint", "python", "acme-to-files:test",
+        "-c", "import importlib.util; "
+        "assert importlib.util.find_spec('pip') is None; "
+        "assert importlib.util.find_spec('ensurepip') is None",
+    )
     environment_smoke()
 
 

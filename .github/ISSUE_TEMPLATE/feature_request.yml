@@ -1,0 +1,17 @@
+name: Feature request
+description: Suggest an improvement without sharing secrets
+body:
+  - type: textarea
+    id: use_case
+    attributes:
+      label: Use case
+      description: What problem should the exporter solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Include compatibility requirements and alternatives if relevant. Never attach real ACME data, keys or passwords.
+    validations:
+      required: true

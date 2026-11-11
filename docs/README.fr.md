@@ -99,7 +99,9 @@ simplement parce qu'il est unhealthy. Le dernier export conservé peut finir par
 ## Image et maintenance
 
 Image : `ghcr.io/axordotnet/docker-acme-to-files:latest`, Linux AMD64 et ARM64.
-`latest` suit `main` après les tests. En production, figer le digest de l'image.
+`latest` suit `main` après les tests et les scans. Le Compose Vault utilise ce canal pour recevoir
+les reconstructions de sécurité au prochain téléchargement/redéploiement. Un tag de version ou
+un digest de déploiement reste fixe et nécessite une mise à jour explicite.
 Un commit `release: vX.Y.Z` sur `main` publie la version `X.Y.Z`, puis crée son tag Git et sa
 release GitHub après validation du téléchargement public. Un tag Git poussé manuellement
 `vX.Y.Z` déclenche également la publication de l'image correspondante.
@@ -108,5 +110,22 @@ en privé, le propriétaire doit passer sa visibilité à Public dans les param�
 
 Le code est sous licence MIT, les dépendances conservent leurs licences respectives.
 La CI comprend tests, audit des dépendances Python, test du conteneur, SBOM et provenance.
+Dependabot vérifie les dépendances et les digests tous les jours à 04 h (Europe/Paris), week-end
+compris. Il ouvre des PR : il faut toujours les fusionner après validation. Le digest Python
+est donc contrôlé mais peut être mis à jour ; sans fusion de la PR, l'interpréteur reste inchangé.
+
+Chaque jour à 05 h 17 UTC (06 h 17 à Paris en hiver, 07 h 17 en été), la CI reconstruit sans cache
+avec les correctifs Debian disponibles. Elle republie `latest` uniquement après succès des tests
+et scans. Les versions numérotées ne sont pas modifiées par cette tâche. GitHub peut retarder une
+exécution ou désactiver les tâches planifiées sur un dépôt public inactif.
+
+Trivy bloque les vulnérabilités HIGH/CRITICAL disposant d'un correctif. Le rapport complet garde
+visibles celles sans correctif. Les images AMD64 et ARM64 sont contrôlées par digest avant
+promotion vers les tags destinés aux utilisateurs. Une CI verte ne signifie pas zéro CVE.
+
+Pour mettre à jour ton conteneur : `docker compose -f compose.vault.yaml pull`, puis
+`docker compose -f compose.vault.yaml up -d`. Le dépôt ne redéploie pas tes hôtes automatiquement.
+Les correctifs Debian ne remplacent pas la mise à jour du digest pour corriger Python lui-même.
+Voir les [réglages GitHub à activer](repository-settings.md) pour les tags et les fonctions de sécurité.
 Cela ne constitue pas un audit de sécurité indépendant. Ne jamais publier de vrai `acme.json`,
 de clé, de PFX ou de mot de passe dans une issue. Voir [SECURITY.md](../SECURITY.md).

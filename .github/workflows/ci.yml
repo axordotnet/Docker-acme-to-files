@@ -6,7 +6,7 @@ on:
   pull_request:
   workflow_dispatch:
   schedule:
-    - cron: '17 5 * * 1'
+    - cron: '17 5 * * *'
 
 permissions:
   contents: read
@@ -18,7 +18,7 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     strategy:
       matrix:
         python: ['3.13', '3.15']
@@ -36,14 +36,38 @@ jobs:
       - name: Build and exercise the hardened container
         if: matrix.python == '3.15'
         run: |
-          docker build --pull -t acme-to-files:test .
+          docker build --pull --no-cache -t acme-to-files:test .
           PYTHONPATH=src:tests python tests/container_smoke.py
+      - name: Report all image vulnerabilities
+        if: matrix.python == '3.15'
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.76.2
+          image-ref: acme-to-files:test
+          scanners: vuln
+          exit-code: '0'
+          format: table
+      - name: Reject fixable HIGH and CRITICAL image vulnerabilities
+        if: matrix.python == '3.15'
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.76.2
+          skip-setup-trivy: true
+          image-ref: acme-to-files:test
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
 
   publish:
     needs: test
-    if: github.event_name == 'push' && github.repository == 'axordotnet/Docker-acme-to-files'
+    if: >-
+      github.repository == 'axordotnet/Docker-acme-to-files' &&
+      (github.event_name == 'push' ||
+       ((github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
+        github.ref == 'refs/heads/main'))
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     permissions:
       contents: read
       packages: write
@@ -103,12 +127,48 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          # Scan the exact candidate digest before promoting it to user-facing tags.
+          tags: ghcr.io/axordotnet/docker-acme-to-files:build-${{ github.run_id }}-${{ github.run_attempt }}
           labels: ${{ steps.meta.outputs.labels }}
           sbom: true
           provenance: mode=max
+          pull: true
+          no-cache: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Scan exact AMD64 candidate
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_PLATFORM: linux/amd64
+        with:
+          version: v0.76.2
+          image-ref: ghcr.io/axordotnet/docker-acme-to-files@${{ steps.build.outputs.digest }}
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+      - name: Scan exact ARM64 candidate
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_PLATFORM: linux/arm64
+        with:
+          version: v0.76.2
+          skip-setup-trivy: true
+          image-ref: ghcr.io/axordotnet/docker-acme-to-files@${{ steps.build.outputs.digest }}
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+      - name: Promote scanned manifest to published tags
+        env:
+          IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          args=()
+          while IFS= read -r tag; do
+            if [ -n "$tag" ]; then args+=(--tag "$tag"); fi
+          done <<< "$IMAGE_TAGS"
+          docker buildx imagetools create "${args[@]}" "ghcr.io/axordotnet/docker-acme-to-files@${IMAGE_DIGEST}"
 
   verify-public-image:
     needs: publish
@@ -117,11 +177,11 @@ jobs:
     steps:
       - name: Verify anonymous pull (package must be public)
         env:
-          COMMIT: ${{ github.sha }}
+          DIGEST: ${{ needs.publish.outputs.digest }}
         run: |
           export DOCKER_CONFIG="$(mktemp -d)"
-          docker pull "ghcr.io/axordotnet/docker-acme-to-files:sha-${COMMIT}"
-          docker run --rm --network none "ghcr.io/axordotnet/docker-acme-to-files:sha-${COMMIT}" --help
+          docker pull "ghcr.io/axordotnet/docker-acme-to-files@${DIGEST}"
+          docker run --rm --network none "ghcr.io/axordotnet/docker-acme-to-files@${DIGEST}" --help
       - name: Verify versioned image
         if: needs.publish.outputs.release_enabled == 'true'
         env:
