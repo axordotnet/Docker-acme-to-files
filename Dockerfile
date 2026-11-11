@@ -9,6 +9,9 @@ FROM python:3.15-slim-bookworm@sha256:96599df822d0e1c6bb700014a05c7f3c8cabc6e0f7
 RUN apt-get update \
     && apt-get upgrade -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
+# Dependencies are installed in the build stage; no installer is needed at runtime.
+RUN python -m pip uninstall --yes pip \
+    && python -c "import ensurepip, shutil; shutil.rmtree(ensurepip.__path__[0])"
 LABEL org.opencontainers.image.title="Docker-acme-to-files" \
       org.opencontainers.image.description="Offline Traefik ACME certificate exporter" \
       org.opencontainers.image.source="https://github.com/axordotnet/Docker-acme-to-files" \

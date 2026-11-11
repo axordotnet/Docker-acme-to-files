@@ -154,7 +154,7 @@ restart a container solely because it is unhealthy. Monitor health and certifica
 
 ```sh
 docker pull ghcr.io/axordotnet/docker-acme-to-files:latest
-docker build --pull -t acme-to-files:local .
+docker build --pull --no-cache -t acme-to-files:local .
 ```
 
 `latest` follows tested/scanned `main`; `sha-<full-commit-sha>` tracks its most recent build.
@@ -183,6 +183,8 @@ Unfixed findings remain in the full report for review; a green pipeline is not a
 the image contains no CVEs. Both AMD64 and ARM64 candidate manifests are scanned by exact
 digest before promotion to release/latest tags. Scanner failures also block promotion.
 The Trivy action is tracked by Dependabot; its explicit CLI version must also be maintained.
+The final image excludes pip/ensurepip and their bundled dependencies; installation tools
+remain confined to the build stage.
 
 Updating GHCR does not update running containers. Pull and recreate your service when ready:
 
