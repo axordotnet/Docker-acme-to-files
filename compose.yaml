@@ -1,0 +1,37 @@
+services:
+  acme-to-files:
+    image: ghcr.io/axordotnet/docker-acme-to-files:latest
+    restart: unless-stopped
+    user: "${EXPORT_UID:-10001}:${EXPORT_GID:-10001}"
+    read_only: true
+    network_mode: none
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 64
+    mem_limit: 256m
+    cpus: 1.0
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777
+    environment:
+      ACME_SOURCE: /input/acme.json
+      OUTPUT_DIR: /output
+      PFX_PASSWORD_FILE: /run/secrets/pfx_password
+      POLL_INTERVAL: "30"
+    volumes:
+      # Mount the directory, so atomic replacement of acme.json is detected.
+      - type: bind
+        source: ${ACME_SOURCE_DIR:-./input}
+        target: /input
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${CERT_OUTPUT_DIR:-./output}
+        target: /output
+        bind:
+          create_host_path: false
+    secrets:
+      - pfx_password
+secrets:
+  pfx_password:
+    file: ./secrets/pfx_password.txt

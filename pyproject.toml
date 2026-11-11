@@ -1,0 +1,21 @@
+[project]
+name = "acme-to-files"
+version = "0.1.0"
+description = "Safely export Traefik ACME certificates for other applications"
+requires-python = ">=3.13"
+license = "MIT"
+dependencies = ["cryptography>=46.0.3,<52"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "UP", "B", "S"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "S105", "S106", "S603", "S607"]

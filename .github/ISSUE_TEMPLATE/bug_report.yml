@@ -1,0 +1,22 @@
+name: Bug report
+description: Report a reproducible issue without secrets
+body:
+  - type: markdown
+    attributes:
+      value: Never attach acme.json, private keys, PFX files or passwords. Report security issues privately as described in SECURITY.md.
+  - type: input
+    id: version
+    attributes:
+      label: Image tag or digest
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps, expected result and actual result
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Host architecture, Docker version and sanitized logs
