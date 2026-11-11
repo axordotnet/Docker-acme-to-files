@@ -88,7 +88,7 @@ def test_no_pfx_and_wildcard():
     assert not any(p.endswith(".pfx") or p.endswith("combined.pem") for p in files)
 
 
-@pytest.mark.parametrize("name", ["../../escape", "/tmp/escape", "a\\b", "a\n", "..", ""])
+@pytest.mark.parametrize("name", ["../../escape", "/tmp/escape", "a\\b", "a\n", "..", ""])  # noqa: S108
 def test_unsafe_names(name):
     with pytest.raises(ExportError):
         component(name)

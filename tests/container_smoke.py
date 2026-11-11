@@ -40,7 +40,7 @@ def main():
         container = docker(
             "run", "--detach", "--read-only", "--network", "none",
             "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true",
-            "--user", f"{os.getuid()}:{os.getgid()}", "--tmpfs", "/tmp:mode=1777",
+            "--user", f"{os.getuid()}:{os.getgid()}", "--tmpfs", "/tmp:mode=1777",  # noqa: S108
             "--mount", f"type=bind,src={source},dst=/input,readonly",
             "--mount", f"type=bind,src={output},dst=/output",
             "--mount", f"type=bind,src={password},dst=/password,readonly",
