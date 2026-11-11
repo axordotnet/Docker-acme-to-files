@@ -6,14 +6,15 @@ import tempfile
 import time
 from pathlib import Path
 
+from cryptography.hazmat.primitives.serialization import pkcs12
 from test_exporter import PASSWORD, make_entry, snapshot
 
 from acme_to_files.app import parse_snapshot
 
 
-def docker(*args, check=True):
+def docker(*args, check=True, env=None):
     return subprocess.run(  # noqa: S603
-        ["docker", *args], check=check, capture_output=True, text=True,
+        ["docker", *args], check=check, capture_output=True, text=True, env=env,
     )  # noqa: S607
 
 
@@ -73,6 +74,45 @@ def main():
         finally:
             docker("rm", "--force", container, check=False)
     print("Container export, renewal, recovery, password rotation and SIGTERM passed")
+    environment_smoke()
+
+
+def environment_smoke():
+    """Vault-style environment injection, precedence, recreation and fail-closed behavior."""
+    with tempfile.TemporaryDirectory() as folder:
+        root = Path(folder)
+        source, output = root / "input", root / "output"
+        source.mkdir()
+        output.mkdir()
+        (source / "acme.json").write_bytes(snapshot(make_entry()))
+        secret = "vault-test-password-é-$value"
+        command = [
+            "run", "--rm", "--read-only", "--network", "none", "--cap-drop", "ALL",
+            "--security-opt", "no-new-privileges:true",
+            "--user", f"{os.getuid()}:{os.getgid()}", "--tmpfs", "/tmp:mode=1777",  # noqa: S108
+            "--mount", f"type=bind,src={source},dst=/input,readonly",
+            "--mount", f"type=bind,src={output},dst=/output",
+            "--env", "PFX_PASSWORD", "acme-to-files:test", "--once",
+            "--password-file", "/nonexistent-file",
+        ]
+        env = {**os.environ, "PFX_PASSWORD": secret}
+        result = docker(*command, env=env)
+        assert secret not in result.stdout + result.stderr
+        current = output / "current"
+        pfx = current / "letsencrypt/example.test/bundle.pfx"
+        _, cert, _ = pkcs12.load_key_and_certificates(pfx.read_bytes(), secret.encode())
+        assert cert is not None
+        previous = current.resolve()
+        result = docker(*command, env={**env, "PFX_PASSWORD": ""}, check=False)
+        assert result.returncode == 1 and current.resolve() == previous
+        rotated = "rotated-vault-test-password"
+        docker(*command, env={**env, "PFX_PASSWORD": rotated})
+        assert current.resolve() != previous
+        _, cert, _ = pkcs12.load_key_and_certificates(pfx.read_bytes(), rotated.encode())
+        assert cert is not None
+        docker(*command, "--no-pfx", env={**env, "PFX_PASSWORD": ""})
+        assert not pfx.exists()
+    print("Vault environment, exact password, precedence, recreation and --no-pfx passed")
 
 
 if __name__ == "__main__":

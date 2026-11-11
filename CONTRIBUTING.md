@@ -19,11 +19,16 @@ and confirm you have the right to contribute it. Be respectful and provide actio
 ## Maintainer release checklist
 
 1. Review tests, dependency audit and container smoke test on the intended commit.
-2. Update the project version and CHANGELOG.md for the release.
-3. Push a `vX.Y.Z` Git tag to trigger versioned AMD64/ARM64 images.
-4. Confirm the publication and anonymous pull verification jobs succeeded; if newly created,
+2. Update the project version, CHANGELOG.md and `docs/releases/vX.Y.Z.md` for the release.
+3. Merge the tested change with the exact merge commit title `release: vX.Y.Z`.
+   The pipeline checks for an existing tag before publishing `X.Y.Z`; after image verification
+   it creates the Git tag and GitHub release with the release notes and image digest.
+   The release token only has repository contents write permission in the final release job.
+   Do not reuse a published version. Alternatively, manually push a `vX.Y.Z` Git tag to build
+   versioned images (this route does not automatically create release notes).
+4. Confirm the publication, anonymous pull verification and release jobs succeeded; if newly created,
    set the GHCR package visibility to Public using the owner account.
-5. Inspect the generated SBOM/provenance and publish release notes including the image digest.
+5. Inspect the generated SBOM/provenance and the published release notes and image digest.
 6. Configure branch rules requiring the `test` job and enable private vulnerability reporting
    and GitHub secret scanning/push protection where available. These are repository settings;
    committing this document does not enable them.

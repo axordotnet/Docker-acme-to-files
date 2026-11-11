@@ -1,10 +1,10 @@
 # syntax=docker/dockerfile:1
-FROM python:3.13-slim-bookworm AS dependencies
+FROM python:3.15-slim-bookworm AS dependencies
 WORKDIR /build
 COPY requirements.txt .
 RUN python -m pip install --no-cache-dir --only-binary=:all: --target=/dependencies -r requirements.txt
 
-FROM python:3.13-slim-bookworm
+FROM python:3.15-slim-bookworm
 LABEL org.opencontainers.image.title="Docker-acme-to-files" \
       org.opencontainers.image.description="Offline Traefik ACME certificate exporter" \
       org.opencontainers.image.source="https://github.com/axordotnet/Docker-acme-to-files" \

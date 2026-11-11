@@ -21,6 +21,38 @@ Ne pas rendre `acme.json` accessible à tous : Traefik utilise normalement le mo
 Utiliser le même UID si approprié, ou une copie protégée. Le conteneur fonctionne par défaut
 en `10001:10001`, sans réseau, sans privilèges et avec sa racine en lecture seule.
 
+## Secrets injectés par Vault
+
+Depuis la version **0.2.0**, tu peux injecter directement la variable `PFX_PASSWORD`.
+Un exemple complet sans fichier secret est fourni dans `compose.vault.yaml` :
+
+```sh
+docker compose -f compose.vault.yaml up -d
+```
+
+Le Vault doit fournir `PFX_PASSWORD` à l'environnement de déploiement. Pour ton propre Compose :
+
+```yaml
+environment:
+  PFX_PASSWORD: "${PFX_PASSWORD:?Injecter PFX_PASSWORD depuis le Vault}"
+```
+
+Supprimer les anciennes déclarations du secret fichier si tu n'en utilises plus. Utiliser
+`compose.vault.yaml` seul, sans le fusionner avec le Compose par défaut.
+La variable est prioritaire sur `PFX_PASSWORD_FILE` et `--password-file`, même si elle est vide :
+une valeur invalide provoque une erreur, sans repli silencieux sur le fichier.
+Sans variable, le fonctionnement par fichier reste identique. `--no-pfx` ignore les deux sources.
+
+Le mot de passe doit contenir 12 à 4096 octets UTF-8, sans NUL. Les espaces et retours à la ligne
+de la variable sont conservés exactement. Il n'est jamais affiché par l'application ; les
+administrateurs ayant accès à `docker inspect` peuvent néanmoins consulter l'environnement.
+
+Après rotation dans le Vault, réinjecter le secret puis **recréer** le conteneur :
+
+```sh
+docker compose -f compose.vault.yaml up -d --force-recreate
+```
+
 ## Fichiers produits
 
 Pour le resolver `letsencrypt` et le domaine `example.org` :
@@ -44,7 +76,8 @@ exigeant un PFX RC2/3DES ne sont pas pris en charge.
 
 La source est vérifiée toutes les 30 secondes (`POLL_INTERVAL`). Monter son **dossier** en
 lecture seule pour détecter aussi les remplacements de fichier. Le mot de passe vient de
-`PFX_PASSWORD_FILE` ; sa rotation est détectée. `--no-pfx` permet une sortie PEM sans secret.
+`PFX_PASSWORD_FILE` ou `PFX_PASSWORD` ; la rotation du fichier est détectée, celle d'une variable
+nécessite de recréer le conteneur. `--no-pfx` permet une sortie PEM sans secret.
 `--once` réalise un export puis termine avec un code de retour exploitable.
 
 Tout le fichier est validé avant publication : correspondance clé/certificat, dates, domaines
@@ -67,7 +100,9 @@ simplement parce qu'il est unhealthy. Le dernier export conservé peut finir par
 
 Image : `ghcr.io/axordotnet/docker-acme-to-files:latest`, Linux AMD64 et ARM64.
 `latest` suit `main` après les tests. En production, figer le digest de l'image.
-Les tags Git `vX.Y.Z` déclenchent la publication d'une version `X.Y.Z`.
+Un commit `release: vX.Y.Z` sur `main` publie la version `X.Y.Z`, puis crée son tag Git et sa
+release GitHub après validation du téléchargement public. Un tag Git poussé manuellement
+`vX.Y.Z` déclenche également la publication de l'image correspondante.
 La CI vérifie aussi que l'image peut être téléchargée sans connexion ; si GHCR a créé le package
 en privé, le propriétaire doit passer sa visibilité à Public dans les paramètres du package.
 
