@@ -1,10 +1,10 @@
 # syntax=docker/dockerfile:1
-FROM python:3.15-slim-bookworm@sha256:96599df822d0e1c6bb700014a05c7f3c8cabc6e0f7ff3c4f9f69cee033b4b5d9 AS dependencies
+FROM python:3.15-slim-bookworm@sha256:498829c717b1e59fc42f0e7865eafe4e04ca0f70a3769d4ae70ba218df54507c AS dependencies
 WORKDIR /build
 COPY requirements.txt .
 RUN python -m pip install --no-cache-dir --only-binary=:all: --target=/dependencies -r requirements.txt
 
-FROM python:3.15-slim-bookworm@sha256:96599df822d0e1c6bb700014a05c7f3c8cabc6e0f7ff3c4f9f69cee033b4b5d9
+FROM python:3.15-slim-bookworm@sha256:498829c717b1e59fc42f0e7865eafe4e04ca0f70a3769d4ae70ba218df54507c
 # Refresh Debian security packages on each uncached scheduled build.
 RUN apt-get update \
     && apt-get upgrade -y --no-install-recommends \
